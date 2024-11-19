@@ -1,0 +1,6 @@
+pdfminer.six>=20221105
+pytesseract
+Pillow
+pdf2image
+notion-client
+python-dotenv
