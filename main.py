@@ -2,8 +2,9 @@ import os
 import logging
 import argparse
 from dotenv import load_dotenv
-from pdf_extractor import extract_text_combined
+from pdf_extractor import extract_elements_combined, extract_images_to_debug
 from notion_manager import NotionManager
+import fitz
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -22,12 +23,15 @@ if not notion_database_id:
 def process_pdf_and_upload(file_path, database_id):
     """Process PDF and upload its content to Notion."""
     try:
-        # Extract text from PDF
-        text = extract_text_combined(file_path)
+        # # Extract images to debug folder
+        # extract_images_to_debug(file_path)
+        
+        # Extract elements from PDF
+        elements = extract_elements_combined(file_path)
         
         # Upload to Notion
         notion = NotionManager()
-        notion.create_page_in_database(text, database_id, os.path.basename(file_path))
+        notion.create_page_in_database(elements, database_id, os.path.basename(file_path))
         
         logger.info("PDF processing and page creation completed successfully")
         return True

@@ -4,3 +4,5 @@ Pillow
 pdf2image
 notion-client
 python-dotenv
+requests
+PyMuPDF
