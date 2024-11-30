@@ -30,25 +30,60 @@ class NotionManager:
                 },
             }
             
-            # Split text into chunks to comply with Notion's limits
-            max_length = 2000  # Adjust as needed based on Notion's API limits
-            text_chunks = [text[i:i+max_length] for i in range(0, len(text), max_length)]
-            content_blocks = [
-                {
-                    "object": "block",
-                    "type": "paragraph",
-                    "paragraph": {
-                        "rich_text": [
-                            {
+            # Parse text into lines and create appropriate blocks
+            lines = text.split('\n')
+            content_blocks = []
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('# '):
+                    # Heading 1
+                    content_blocks.append({
+                        "object": "block",
+                        "type": "heading_1",
+                        "heading_1": {
+                            "rich_text": [{
                                 "type": "text",
-                                "text": {
-                                    "content": chunk
-                                }
-                            }
-                        ]
-                    }
-                } for chunk in text_chunks
-            ]
+                                "text": {"content": line[2:].strip()}
+                            }]
+                        }
+                    })
+                elif line.startswith('## '):
+                    # Heading 2
+                    content_blocks.append({
+                        "object": "block",
+                        "type": "heading_2",
+                        "heading_2": {
+                            "rich_text": [{
+                                "type": "text",
+                                "text": {"content": line[3:].strip()}
+                            }]
+                        }
+                    })
+                elif line.startswith('- '):
+                    # Bulleted list item
+                    content_blocks.append({
+                        "object": "block",
+                        "type": "bulleted_list_item",
+                        "bulleted_list_item": {
+                            "rich_text": [{
+                                "type": "text",
+                                "text": {"content": line[2:].strip()}
+                            }]
+                        }
+                    })
+                elif line:
+                    # Regular paragraph
+                    content_blocks.append({
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": [{
+                                "type": "text",
+                                "text": {"content": line}
+                            }]
+                        }
+                    })
             
             # Split content_blocks into batches of up to 100 blocks
             batch_size = 100
