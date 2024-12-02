@@ -35,7 +35,7 @@ def process_pdf_and_upload(file_path, database_id):
         
         # Upload the entire text to Notion as a single page
         notion = NotionManager()
-        notion.create_page_in_database(text, database_id)
+        notion.create_page_in_database(text, database_id, os.path.basename(file_path))
         
         logger.info("PDF processed and content uploaded to Notion successfully")
         return True
