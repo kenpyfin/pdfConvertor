@@ -5,6 +5,13 @@ from dotenv import load_dotenv
 from pdf_extractor import extract_text_combined
 from notion_manager import NotionManager
 
+# Define output directory
+OUTPUT_DIR = 'output'
+
+# Create output directory if it doesn't exist
+if not os.path.exists(OUTPUT_DIR):
+    os.makedirs(OUTPUT_DIR)
+
 load_dotenv()  # Load environment variables from .env file
 
 logging.basicConfig(
@@ -19,17 +26,18 @@ if not notion_database_id:
     logger.error('NOTION_DATABASE_ID environment variable not set')
     exit(1)
 
+
 def process_pdf_and_upload(file_path, database_id):
     """Process PDF and upload its content to Notion."""
     try:
         # Extract text from PDF
         text = extract_text_combined(file_path)
         
-        # Upload to Notion
+        # Upload the entire text to Notion as a single page
         notion = NotionManager()
-        notion.create_page_in_database(text, database_id, os.path.basename(file_path))
+        notion.create_page_in_database(text, database_id)
         
-        logger.info("PDF processing and page creation completed successfully")
+        logger.info("PDF processed and content uploaded to Notion successfully")
         return True
     except Exception as e:
         logger.error(f"Error in process_pdf_and_upload: {e}")
