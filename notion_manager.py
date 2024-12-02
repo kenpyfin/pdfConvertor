@@ -12,7 +12,13 @@ class NotionManager:
         if not os.getenv('NOTION_API_KEY'):
             raise ValueError("NOTION_API_KEY environment variable not set")
 
-    def create_page_in_database(self, text, database_id, file_name):
+    def upload_chunks_to_database(self, chunks, database_id, file_name):
+        """Upload multiple chunks as separate pages to the Notion database."""
+        for index, chunk_text in enumerate(chunks):
+            page_title = f"{os.path.splitext(file_name)[0]} - Part {index + 1}"
+            self.create_page_in_database(chunk_text, database_id, page_title)
+
+    def create_page_in_database(self, text, database_id, page_title):
         """Create a new page in the Notion database with the extracted text."""
         try:
             logger.info(f"Creating a new page in Notion database {database_id}")
@@ -23,67 +29,24 @@ class NotionManager:
                         {
                             "type": "text",
                             "text": {
-                                "content": file_name
+                                "content": page_title
                             }
                         }
                     ]
                 },
             }
             
-            # Parse text into lines and create appropriate blocks
-            lines = text.split('\n')
-            content_blocks = []
-            
-            for line in lines:
-                line = line.strip()
-                if line.startswith('# '):
-                    # Heading 1
-                    content_blocks.append({
-                        "object": "block",
-                        "type": "heading_1",
-                        "heading_1": {
-                            "rich_text": [{
-                                "type": "text",
-                                "text": {"content": line[2:].strip()}
-                            }]
-                        }
-                    })
-                elif line.startswith('## '):
-                    # Heading 2
-                    content_blocks.append({
-                        "object": "block",
-                        "type": "heading_2",
-                        "heading_2": {
-                            "rich_text": [{
-                                "type": "text",
-                                "text": {"content": line[3:].strip()}
-                            }]
-                        }
-                    })
-                elif line.startswith('- '):
-                    # Bulleted list item
-                    content_blocks.append({
-                        "object": "block",
-                        "type": "bulleted_list_item",
-                        "bulleted_list_item": {
-                            "rich_text": [{
-                                "type": "text",
-                                "text": {"content": line[2:].strip()}
-                            }]
-                        }
-                    })
-                elif line:
-                    # Regular paragraph
-                    content_blocks.append({
-                        "object": "block",
-                        "type": "paragraph",
-                        "paragraph": {
-                            "rich_text": [{
-                                "type": "text",
-                                "text": {"content": line}
-                            }]
-                        }
-                    })
+            # Create a single paragraph block with the text
+            content_blocks = [{
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{
+                        "type": "text",
+                        "text": {"content": text}
+                    }]
+                }
+            }]
             
             # Split content_blocks into batches of up to 100 blocks
             batch_size = 100

@@ -4,3 +4,6 @@ Pillow
 pdf2image
 notion-client
 python-dotenv
+transformers
+torch
+sentencepiece
