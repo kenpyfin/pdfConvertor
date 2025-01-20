@@ -11,3 +11,4 @@ beautifulsoup4
 magic-pdf[full]
 requests
 unittest2
+anthropic
