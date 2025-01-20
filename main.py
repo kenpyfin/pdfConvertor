@@ -2,6 +2,7 @@ import os
 import logging
 import argparse
 import sys
+import requests
 
 if sys.version_info < (3, 10):
     sys.exit("Python 3.10 or higher is required.")
@@ -35,6 +36,37 @@ if not notion_database_id:
     logger.error('NOTION_DATABASE_ID environment variable not set')
     exit(1)
 
+
+def reformat_markdown_with_claude(md_text):
+    from anthropic import Anthropic
+
+    # Initialize Anthropic client
+    anthropic = Anthropic(
+        api_key=os.getenv('ANTHROPIC_API_KEY')
+    )
+    
+    # Create the system prompt
+    system_prompt = "You are a helpful assistant that reformats markdown text to be more readable and consistent. Only output the reformatted markdown without any explanations."
+    
+    # Create the user prompt
+    user_prompt = f"Please reformat this markdown text to be more readable without changing a single word:\n\n{md_text}"
+    
+
+    # Make the API call using Claude 3 Haiku
+    message = anthropic.messages.create(
+        model="claude-3-haiku-20240307",
+        max_tokens=4096,
+        system=system_prompt,
+        messages=[
+            {"role": "user", "content": user_prompt}
+        ]
+    )
+
+    # Extract the text content from the message
+    reformatted_text = message.content[0].text if isinstance(message.content, list) else message.content
+    
+    # Return the reformatted text
+    return reformatted_text
 
 def split_markdown_into_chunks(md_text: str, max_chunk_size: int = 10000, max_chunks: int = 10) -> list:
     """Split markdown text into chunks based on max_chunk_size and limit to max_chunks."""
@@ -115,6 +147,10 @@ def process_pdf_and_upload(file_path, database_id, title=None):
             md_text = "\n".join(md_content)
         else:
             md_text = md_content
+
+        # Reformat the markdown content using Claude AI
+        md_text = reformat_markdown_with_claude(md_text)
+
         with open(markdown_file_path, 'w', encoding='utf-8') as f:
             f.write(md_text)
 
