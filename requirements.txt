@@ -1,9 +1,13 @@
-pdfminer.six>=20221105
-pytesseract
+# Requires-Python: >=3.10
+--extra-index-url https://wheels.myhloli.com
 Pillow
-pdf2image
 notion-client
 python-dotenv
 transformers
 torch
-sentencepiece
+torchvision
+markdown
+beautifulsoup4
+magic-pdf[full]
+requests
+unittest2
