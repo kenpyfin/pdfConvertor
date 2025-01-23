@@ -12,3 +12,4 @@ magic-pdf[full]
 requests
 unittest2
 anthropic
+tiktoken

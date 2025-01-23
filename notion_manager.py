@@ -47,6 +47,10 @@ class NotionManager:
             logger.error(f"Error uploading chunks to Notion: {e}")
             raise
 
+    def chunk_rich_text(self, rich_text, chunk_size=1000):
+        """Split rich_text into chunks of a specified size."""
+        return [rich_text[i:i + chunk_size] for i in range(0, len(rich_text), chunk_size)]
+
     def md_to_notion_blocks(self, md_text):
         """
         Convert Markdown text to Notion block objects.
@@ -55,6 +59,39 @@ class NotionManager:
         logger.debug(f"Converted HTML: {html}")
         soup = bs4.BeautifulSoup(html, features="html.parser")
 
+        def parse_blockquote(element):
+            """Parse blockquote elements and return Notion quote blocks."""
+            quote_text = element.get_text(strip=True)
+            if quote_text:
+                return [{
+                    "type": "quote",
+                    "quote": {
+                        "rich_text": [{"type": "text", "text": {"content": quote_text}}]
+                    }
+                }]
+            else:
+                return []
+
+        def parse_code_block(element):
+            """Parse code blocks and return Notion code blocks."""
+            code_element = element.find('code')
+            if code_element:
+                code_text = code_element.get_text()
+                language_class = code_element.get('class', [])
+                if language_class:
+                    language = language_class[0].replace('language-', '')
+                else:
+                    language = 'plain text'
+                return [{
+                    "type": "code",
+                    "code": {
+                        "rich_text": [{"type": "text", "text": {"content": code_text}}],
+                        "language": language
+                    }
+                }]
+            else:
+                return []
+
         def parse_element(element):
             blocks = []
             for child in element.contents:
@@ -62,28 +99,46 @@ class NotionManager:
                     logger.debug(f"Processing HTML tag: {child.name}")
                     if child.name in ['h1', 'h2', 'h3']:
                         heading_text = child.get_text()
-                        while heading_text:
-                            chunk_text = heading_text[:2000]
-                            heading_text = heading_text[2000:]
-                            blocks.append({
-                                f"type": f"heading_{child.name[1]}",
-                                f"heading_{child.name[1]}": {
-                                    "rich_text": [{"type": "text", "text": {"content": chunk_text}}]
-                                }
-                            })
+                        heading_level = int(child.name[1])
+                        blocks.append({
+                            "type": f"heading_{heading_level}",
+                            f"heading_{heading_level}": {
+                                "rich_text": [{"type": "text", "text": {"content": heading_text}}]
+                            }
+                        })
                     elif child.name == 'p':
                         paragraph_blocks = parse_paragraph(child)
                         blocks.extend(paragraph_blocks)
                     elif child.name in ['ul', 'ol']:
-                        blocks.extend(parse_list(child, "bulleted_list_item" if child.name == 'ul' else "numbered_list_item"))
+                        list_type = "bulleted_list_item" if child.name == 'ul' else "numbered_list_item"
+                        list_blocks = parse_list(child, list_type)
+                        blocks.extend(list_blocks)
                     elif child.name == 'img':
                         img_src = child.get('src')
                         if img_src:
                             image_block = self.create_image_block(img_src)
                             if image_block:
                                 blocks.append(image_block)
+                    elif child.name == 'blockquote':
+                        blockquote_blocks = parse_blockquote(child)
+                        blocks.extend(blockquote_blocks)
+                    elif child.name == 'pre':
+                        code_blocks = parse_code_block(child)
+                        blocks.extend(code_blocks)
                     else:
-                        blocks.extend(parse_element(child))
+                        # Recursively process unknown tags
+                        sub_blocks = parse_element(child)
+                        if sub_blocks:
+                            blocks.extend(sub_blocks)
+                        else:
+                            # Treat unhandled tags as paragraphs
+                            text = child.get_text(strip=True)
+                            if text:
+                                logger.warning(f"Unhandled tag '{child.name}' encountered.")
+                                blocks.append({
+                                    "type": "paragraph", 
+                                    "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}}]}
+                                })
                 elif isinstance(child, bs4.NavigableString):
                     text = str(child).strip()
                     if text:
@@ -91,10 +146,12 @@ class NotionManager:
                             "type": "paragraph",
                             "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}}]}
                         })
+                logger.debug(f"Added block: {blocks[-1] if blocks else None}")
             return blocks
 
         def parse_paragraph(element):
-            blocks = []
+            rich_text = []
+
             for child in element.contents:
                 if isinstance(child, bs4.Tag):
                     if child.name == 'img':
@@ -103,33 +160,66 @@ class NotionManager:
                         if img_src:
                             image_block = self.create_image_block(img_src)
                             if image_block:
-                                blocks.append(image_block)
+                                return [image_block]
                     else:
-                        blocks.extend(parse_element(child))
+                        text = child.get_text()
+                        if text:
+                            annotations = {}
+                            if child.name in ['strong', 'b']:
+                                annotations['bold'] = True
+                            if child.name in ['em', 'i']:
+                                annotations['italic'] = True
+                            if child.name == 'code':
+                                annotations['code'] = True
+                            rich_text.append({
+                                "type": "text",
+                                "text": {"content": text},
+                                "annotations": annotations
+                            })
                 elif isinstance(child, bs4.NavigableString):
-                    text = str(child).strip()
-                    if text:
-                        blocks.append({
-                            "type": "paragraph",
-                            "paragraph": {"rich_text": [{"type": "text", "text": {"content": text}}]}
-                        })
-            return blocks
+                    text = str(child)
+                    if text.strip():
+                        rich_text.append({"type": "text", "text": {"content": text.strip()}})
+
+            if rich_text:
+                rich_text_chunks = self.chunk_rich_text(rich_text)
+                blocks = []
+                for chunk in rich_text_chunks:
+                    blocks.append({
+                        "type": "paragraph",
+                        "paragraph": {"rich_text": chunk}
+                    })
+                return blocks
+            return []
 
         def parse_list(element, list_item_type):
             items = []
             for li in element.find_all('li', recursive=False):
-                blocks = []
+                list_item_block = {
+                    "type": list_item_type,
+                    list_item_type: {"rich_text": []}
+                }
+
+                # Process the contents of the list item to build rich_text
+                rich_text = []
                 for child in li.contents:
                     if isinstance(child, bs4.Tag):
-                        blocks.extend(parse_element(child))
+                        # Process child elements and append their rich_text
+                        child_blocks = parse_element(child)
+                        for block in child_blocks:
+                            if 'rich_text' in block.get(block['type'], {}):
+                                rich_text.extend(block[block['type']]['rich_text'])
+                            else:
+                                # For blocks like images or code, append them separately
+                                items.append(block)
                     elif isinstance(child, bs4.NavigableString):
                         text = str(child).strip()
                         if text:
-                            blocks.append({
-                                "type": list_item_type,
-                                list_item_type: {"rich_text": [{"type": "text", "text": {"content": text}}]}
-                            })
-                items.extend(blocks)
+                            rich_text.append({"type": "text", "text": {"content": text}})
+                
+                if rich_text:
+                    list_item_block[list_item_type]["rich_text"] = rich_text
+                    items.append(list_item_block)
             return items
 
         return parse_element(soup)
