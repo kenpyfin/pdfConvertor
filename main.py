@@ -36,6 +36,43 @@ if not notion_database_id:
     exit(1)
 
 
+def reformat_markdown_with_claude(md_text):
+    from anthropic import Anthropic
+    
+    # Approximate tokens per character (this is a rough estimate)
+    TOKENS_PER_CHAR = 0.25
+    # Leave room for system prompt and other message components
+    MAX_CHUNK_CHARS = int((4096 * 0.8) / TOKENS_PER_CHAR)  # Using 80% of max tokens
+    
+    client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+    chunks = split_markdown_into_chunks(md_text, max_chunk_size=MAX_CHUNK_CHARS)
+    reformatted_chunks = []
+    system_prompt = "You are a helpful assistant that reformats markdown text to be more readable and consistent. Only output the reformatted markdown without any other words."
+
+    for chunk in chunks:
+        try:
+            message = client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"Please reformat this markdown text to be more readable without adding or deleting a single word:\n\n{chunk}"
+                    }
+                ]
+            )
+            reformatted_chunk = message.content[0].text if message.content else ""
+            reformatted_chunks.append(reformatted_chunk)
+        except Exception as e:
+            logger.error(f"Error reformatting chunk: {e}")
+            # Fallback: return the original chunk if reformatting fails
+            reformatted_chunks.append(chunk)
+    
+    # Combine all reformatted chunks
+    return "\n\n".join(reformatted_chunks)
+
+
 def split_markdown_into_chunks(md_text: str, max_chunk_size: int = 10000, max_chunks: int = 10) -> list:
     """Split markdown text into chunks based on max_chunk_size and limit to max_chunks."""
     # Initial splitting based on max_chunk_size
@@ -72,7 +109,7 @@ def split_markdown_into_chunks(md_text: str, max_chunk_size: int = 10000, max_ch
     
     return chunks
 
-def process_pdf_and_upload(file_path, database_id, title=None):
+def process_pdf_and_upload(file_path, database_id, title=None, max_chunks=10):
     """Process PDF using OCRPipe and upload its content to Notion."""
     try:
         # Read PDF bytes
@@ -115,11 +152,13 @@ def process_pdf_and_upload(file_path, database_id, title=None):
             md_text = "\n".join(md_content)
         else:
             md_text = md_content
+
+        reformatted_md_text = reformat_markdown_with_claude(md_text)    
         with open(markdown_file_path, 'w', encoding='utf-8') as f:
-            f.write(md_text)
+            f.write(reformatted_md_text)
 
         # Split markdown content into chunks (with a maximum of 10 chunks)
-        chunks = split_markdown_into_chunks(md_text, max_chunk_size=10000, max_chunks=10)
+        chunks = split_markdown_into_chunks(md_text, max_chunk_size=10000)
 
         # Upload each chunk to Notion as a separate page
         notion = NotionManager(images_base_path='output')
@@ -135,6 +174,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process PDF and upload to Notion')
     parser.add_argument('--pdf', required=True, help='Path to the PDF file')
     parser.add_argument('--title', required=False, help='Optional title for the markdown file and Notion pages')
+    parser.add_argument('--chunks', required=False, help='How many chunks in Notion do you want to separate into')
     args = parser.parse_args()
 
     pdf_file = args.pdf
